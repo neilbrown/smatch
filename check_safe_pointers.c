@@ -99,6 +99,35 @@ static void match_assign(struct expression *expr)
 	}
 }
 
+static void match_call(struct expression *call)
+{
+	struct expression *arg;
+	struct symbol *type;
+	char *name;
+	int i;
+
+	i = -1;
+	FOR_EACH_PTR(call->args, arg) {
+		i++;
+		type = get_arg_type(call->fn, i);
+
+		if (!type)
+			/* We've reached the variable part of
+			 * a var-args function call.
+			 */
+			break;
+		if (!(type->ctype.modifiers & MOD_SAFE))
+			continue;
+
+		if (is_safe_expr(arg))
+			continue;
+
+		name = expr_to_str(arg);
+		sm_msg("parameter %d requires safe value, not '%s'", i+1, name);
+		free_string(name);
+	} END_FOR_EACH_PTR(arg);
+}
+
 void check_safe_pointers(int id)
 {
 	my_id = id;
@@ -108,4 +137,5 @@ void check_safe_pointers(int id)
 
 	add_hook(&match_dereferences, DEREF_HOOK);
 	add_hook(&match_assign, ASSIGNMENT_HOOK);
+	add_hook(&match_call, FUNCTION_CALL_HOOK);
 }
