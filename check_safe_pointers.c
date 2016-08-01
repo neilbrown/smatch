@@ -22,21 +22,38 @@
 
 static int my_id;
 
+static int is_safe(struct expression *expr)
+{
+	struct symbol *type;
+
+	type = get_type(expr);
+	if (type && (type->ctype.modifiers & MOD_SAFE))
+		return 1;
+
+	return 0;
+}
+
+static int is_safe_expr(struct expression *expr)
+{
+	if (implied_not_equal(expr, 0))
+		return 1;
+
+	if (is_safe(expr))
+		return 1;
+
+	return 0;
+}
+
 static void match_dereferences(struct expression *expr)
 {
 	char *name;
-	struct symbol *type;
 
 	if (expr->type != EXPR_PREOP)
 		return;
 
 	expr = expr->unop;
 
-	if (implied_not_equal(expr, 0))
-		return;
-
-	type = get_type(expr);
-	if (type && (type->ctype.modifiers & MOD_SAFE))
+	if (is_safe_expr(expr))
 		return;
 
 	name = expr_to_str(expr);
