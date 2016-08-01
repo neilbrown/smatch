@@ -195,6 +195,30 @@ static void match_print_implied_max(const char *fn, struct expression *expr, voi
 	free_string(name);
 }
 
+static void match_print_implied_ne(const char *fn, struct expression *expr, void *info)
+{
+	struct expression *arg1, *arg2;
+	sval_t sval;
+	char *name1, *name2;
+
+	arg1 = get_argument_from_call_expr(expr->args, 0);
+	name1 = expr_to_str(arg1);
+
+	arg2 = get_argument_from_call_expr(expr->args, 1);
+	name2 = expr_to_str(arg2);
+
+	if (get_implied_value(arg2, &sval)) {
+		if (implied_not_equal(arg1, sval.value))
+			sm_msg("implied not equal: %s != %s", name1, sval_to_str(sval));
+		else
+			sm_msg("implied not equal: %s may be %s", name1, sval_to_str(sval));
+	} else
+		sm_msg("implied not equal: %s has not single value", name2);
+
+	free_string(name1);
+	free_string(name2);
+}
+
 static void match_user_rl(const char *fn, struct expression *expr, void *info)
 {
 	struct expression *arg;
@@ -618,6 +642,7 @@ void check_debug(int id)
 	add_function_hook("__smatch_implied", &match_print_implied, NULL);
 	add_function_hook("__smatch_implied_min", &match_print_implied_min, NULL);
 	add_function_hook("__smatch_implied_max", &match_print_implied_max, NULL);
+	add_function_hook("__smatch_implied_not_equal", &match_print_implied_ne, NULL);
 	add_function_hook("__smatch_user_rl", &match_user_rl, NULL);
 	add_function_hook("__smatch_hard_max", &match_print_hard_max, NULL);
 	add_function_hook("__smatch_fuzzy_max", &match_print_fuzzy_max, NULL);
