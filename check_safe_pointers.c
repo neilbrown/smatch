@@ -35,6 +35,25 @@ static int is_safe(struct expression *expr)
 	return 0;
 }
 
+static int is_safe_expr(struct expression *expr);
+
+static int is_field_address(struct expression *expr)
+{
+	/* See if 'expr' is the address of a pointer to a
+	 * safe expression, possibly with some member accesses and
+	 * casts in the mix
+	 */
+	expr = strip_expr(expr);
+	if (expr->type != EXPR_PREOP || expr->op != '&')
+		return 0;
+	expr = strip_expr(expr->unop);
+	while (expr->type == EXPR_DEREF)
+		expr = strip_expr(expr->deref);
+	if (expr->type != EXPR_PREOP || expr->op != '*')
+		return 0;
+	return is_safe_expr(expr->unop);
+}
+
 static int is_safe_expr(struct expression *expr)
 {
 	struct smatch_state *st;
@@ -57,6 +76,11 @@ static int is_safe_expr(struct expression *expr)
 		 * the type */
 		if (is_safe_expr(expr->left))
 			return 1;
+
+
+	if (is_field_address(expr))
+		/* The address of a member of a safe pointer is safe */
+		return 1;
 
 	return 0;
 }
