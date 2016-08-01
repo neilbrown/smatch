@@ -131,6 +131,7 @@ CK(check_no_if_block)
 CK(check_buffer_too_small_for_struct)
 CK(check_continue_vs_break)
 CK(check_impossible_mask)
+CK(check_safe_pointers)
 
 /* <- your test goes here */
 /* CK(register_template) */
