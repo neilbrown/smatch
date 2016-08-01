@@ -61,6 +61,13 @@ static int is_safe_expr(struct expression *expr)
 	return 0;
 }
 
+static int in_macro(struct expression *expr)
+{
+	char *name = get_macro_name(expr->pos);
+
+	return name != NULL;
+}
+
 static void match_dereferences(struct expression *expr)
 {
 	char *name;
@@ -71,6 +78,9 @@ static void match_dereferences(struct expression *expr)
 	expr = expr->unop;
 
 	if (is_safe_expr(expr))
+		return;
+
+	if (in_macro(expr))
 		return;
 
 	name = expr_to_str(expr);
