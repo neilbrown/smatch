@@ -25,6 +25,7 @@ static int my_id;
 static void match_dereferences(struct expression *expr)
 {
 	char *name;
+	struct symbol *type;
 
 	if (expr->type != EXPR_PREOP)
 		return;
@@ -32,6 +33,10 @@ static void match_dereferences(struct expression *expr)
 	expr = expr->unop;
 
 	if (implied_not_equal(expr, 0))
+		return;
+
+	type = get_type(expr);
+	if (type && (type->ctype.modifiers & MOD_SAFE))
 		return;
 
 	name = expr_to_str(expr);
