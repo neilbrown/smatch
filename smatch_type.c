@@ -33,7 +33,18 @@ struct symbol *get_real_base_type(struct symbol *sym)
 	if (!ret)
 		return NULL;
 	if (ret->type == SYM_RESTRICT || ret->type == SYM_NODE)
-		return get_real_base_type(ret);
+		ret = get_real_base_type(ret);
+	if (ret &&
+	    (sym->type == SYM_NODE || sym->type == SYM_FN) &&
+	    ((sym->ctype.modifiers & ~ret->ctype.modifiers) &
+	     ~(MOD_STORAGE|MOD_IGNORE))) {
+		/* The modifiers of the symbol need to be included in the type */
+		/* Maybe the address space should too */
+		struct symbol *r = alloc_symbol(sym->pos, ret->type);
+		*r = *ret;
+		r->ctype.modifiers |= sym->ctype.modifiers;
+		ret = r;
+	}
 	return ret;
 }
 
