@@ -49,6 +49,15 @@ static int is_safe_expr(struct expression *expr)
 	if (is_safe(expr))
 		return 1;
 
+	expr = strip_expr(expr);
+	if (expr->type == EXPR_BINOP &&
+	    (expr->op == '+' || expr->op == '-' || expr->op == '&'))
+		/* pointer arithmetic, assume 'left' is the pointer.
+		 * It might have been cast into an int, so we cannot check
+		 * the type */
+		if (is_safe_expr(expr->left))
+			return 1;
+
 	return 0;
 }
 
