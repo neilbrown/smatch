@@ -86,6 +86,17 @@ static void match_assign(struct expression *expr)
 		set_state_expr(my_id, expr->left, &safe);
 	else
 		set_state_expr(my_id, expr->left, &undefined);
+
+	if (is_safe(expr->left) && !is_safe_expr(expr->right)) {
+		char *namel, *namer;
+
+		namel = expr_to_str(expr->left);
+		namer = expr_to_str(expr->right);
+		sm_msg("'%s' can only take 'safe' pointers, not '%s'",
+		       namel, namer);
+		free_string(namel);
+		free_string(namer);
+	}
 }
 
 void check_safe_pointers(int id)
