@@ -21,7 +21,7 @@
 #include "smatch_extra.h"
 
 static int _get_rl(struct expression *expr, int implied, struct range_list **rl, int *recurse_cnt);
-static struct range_list *handle_variable(struct expression *expr, int implied, int *recurse_cnt);
+static int handle_variable(struct expression *expr, int implied, struct range_list **rlp, int *recurse_cnt);
 static struct range_list *(*custom_handle_variable)(struct expression *expr);
 
 static int get_implied_value_internal(struct expression *expr, sval_t *sval, int *recurse_cnt);
@@ -136,6 +136,8 @@ static struct range_list *handle_minus_preop(struct expression *expr, int implie
 
 static struct range_list *handle_preop_rl(struct expression *expr, int implied, int *recurse_cnt)
 {
+	struct range_list *rl;
+
 	switch (expr->op) {
 	case '&':
 		return handle_ampersand_rl(expr, implied, recurse_cnt);
@@ -146,7 +148,9 @@ static struct range_list *handle_preop_rl(struct expression *expr, int implied, 
 	case '-':
 		return handle_minus_preop(expr, implied, recurse_cnt);
 	case '*':
-		return handle_variable(expr, implied, recurse_cnt);
+		if (handle_variable(expr, implied, &rl, recurse_cnt))
+			return rl;
+		return NULL;
 	case '(':
 		return handle_expression_statement_rl(expr, implied, recurse_cnt);
 	default:
@@ -805,68 +809,76 @@ struct range_list *var_to_absolute_rl(struct expression *expr)
 	return clone_rl(estate_rl(state));
 }
 
-static struct range_list *handle_variable(struct expression *expr, int implied, int *recurse_cnt)
+static int handle_variable(struct expression *expr, int implied, struct range_list **rlp, int *recurse_cnt)
 {
 	struct smatch_state *state;
 	struct range_list *rl;
 	sval_t sval, min, max;
 
-	if (get_const_value(expr, &sval))
-		return alloc_rl(sval, sval);
+	if (get_const_value(expr, &sval)) {
+		*rlp = alloc_rl(sval, sval);
+		return 1;
+	}
 
 	if (custom_handle_variable) {
 		rl = custom_handle_variable(expr);
 		if (!rl)
-			return var_to_absolute_rl(expr);
-		return rl;
+			rl = var_to_absolute_rl(expr);
+		*rlp = rl;
+		return 1;
 	}
 
 	switch (implied) {
 	case RL_EXACT:
-		return NULL;
+		return 0;
 	case RL_HARD:
 	case RL_IMPLIED:
 	case RL_ABSOLUTE:
 		state = get_extra_state(expr);
 		if (!state || !state->data) {
 			if (implied == RL_HARD)
-				return NULL;
-			if (get_local_rl(expr, &rl))
-				return rl;
-			if (get_db_type_rl(expr, &rl))
-				return rl;
-			return NULL;
+				return 0;
+			if (get_local_rl(expr, rlp))
+				return 1;
+			if (get_db_type_rl(expr, rlp))
+				return 1;
+			return 0;
 		}
 		if (implied == RL_HARD && !estate_has_hard_max(state))
-			return NULL;
-		return clone_rl(estate_rl(state));
+			return 0;
+		*rlp = clone_rl(estate_rl(state));
+		return 1;
 	case RL_REAL_ABSOLUTE:
 		state = get_extra_state(expr);
 		if (!state || !state->data || is_whole_rl(estate_rl(state))) {
 			state = get_real_absolute_state(expr);
-			if (state && state->data)
-				return clone_rl(estate_rl(state));
-			if (get_local_rl(expr, &rl))
-				return rl;
-			if (get_db_type_rl(expr, &rl))
-				return rl;
-			return NULL;
+			if (state && state->data) {
+				*rlp =  clone_rl(estate_rl(state));
+				return 1;
+			}
+			if (get_local_rl(expr, rlp))
+				return 1;
+			if (get_db_type_rl(expr, rlp))
+				return 1;
+			return 0;
 		}
-		return clone_rl(estate_rl(state));
+		*rlp = clone_rl(estate_rl(state));
+		return 1;
 	case RL_FUZZY:
 		if (!get_fuzzy_min_helper(expr, &min))
 			min = sval_type_min(get_type(expr));
 		if (!get_fuzzy_max_helper(expr, &max))
-			return NULL;
+			return 0;
 		/* fuzzy ranges are often inverted */
 		if (sval_cmp(min, max) > 0) {
 			sval = min;
 			min = max;
 			max = sval;
 		}
-		return alloc_rl(min, max);
+		*rlp = alloc_rl(min, max);
+		return 1;
 	}
-	return NULL;
+	return 0;
 }
 
 static sval_t handle_sizeof(struct expression *expr)
@@ -1035,7 +1047,9 @@ static int _get_rl(struct expression *expr, int implied, struct range_list **rlp
 		rl = handle_call_rl(expr, implied, recurse_cnt);
 		break;
 	default:
-		rl = handle_variable(expr, implied, recurse_cnt);
+		if (handle_variable(expr, implied, rlp, recurse_cnt))
+			return 1;
+		rl = NULL;
 	}
 
 out_cast:
