@@ -26,6 +26,11 @@ static void match_dereferences(struct expression *expr)
 {
 	char *name;
 
+	if (expr->type != EXPR_PREOP)
+		return;
+
+	expr = expr->unop;
+
 	name = expr_to_str(expr);
 	sm_msg("dereference found: %s", name);
 
