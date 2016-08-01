@@ -275,6 +275,7 @@ static int handle_postop_assigns(struct expression *expr)
 static int prev_expression_is_getting_address(struct expression *expr)
 {
 	struct expression *parent;
+	int ret = 0;
 
 	do {
 		parent = expr->parent;
@@ -282,13 +283,15 @@ static int prev_expression_is_getting_address(struct expression *expr)
 		if (!parent)
 			return 0;
 		if (parent->type == EXPR_PREOP && parent->op == '&')
-			return 1;
-		if (parent->type == EXPR_PREOP && parent->op == '(')
+			ret = 1;
+		else if (parent->type == EXPR_PREOP && parent->op == '*')
+			ret = 0;
+		else if (parent->type == EXPR_PREOP && parent->op == '(')
 			goto next;
-		if (parent->type == EXPR_DEREF && parent->op == '.')
+		else if (parent->type == EXPR_DEREF && parent->op == '.')
 			goto next;
-
-		return 0;
+		else
+			return ret;
 next:
 		expr = parent;
 	} while (1);
