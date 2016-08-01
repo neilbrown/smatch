@@ -781,6 +781,7 @@ static void match_vanilla_assign(struct expression *left, struct expression *rig
 	if (!__in_fake_assign &&
 	    !(right->type == EXPR_PREOP && right->op == '&') &&
 	    right_name && right_sym &&
+	    get_sym_type(right_sym->ctype.base_type) != SYM_ARRAY &&
 	    values_fit_type(left, right) &&
 	    !has_symbol(right, sym)) {
 		set_equiv(left, right);
