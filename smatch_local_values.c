@@ -58,6 +58,14 @@ int get_local_rl(struct expression *expr, struct range_list **rl)
 	char *name;
 	struct range_list *tmp;
 
+	if (expr->type == EXPR_STRING ||
+	    (expr->type == EXPR_SYMBOL && expr->ctype &&
+	     expr->ctype->type == SYM_ARRAY)) {
+		/* An array or string stands for itself, not it's contents */
+		if (get_address_rl(expr, rl))
+			return 1;
+	}
+
 	if (!is_static(expr))
 		return 0;
 	if (is_array_symbol(expr))
