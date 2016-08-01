@@ -35,13 +35,15 @@ static void ok_to_use(struct sm_state *sm, struct expression *mod_expr)
 		set_state(my_id, sm->name, sm->sym, &ok);
 }
 
-static int is_freed(struct expression *expr)
+static struct expression *is_freed(struct expression *expr)
 {
 	struct sm_state *sm;
 
 	sm = get_sm_state_expr(my_id, expr);
 	if (sm && slist_has_state(sm->possible, &freed))
-		return 1;
+		return expr;
+	if (expr->type == EXPR_BINOP)
+		return is_freed(expr->left) ?: is_freed(expr->right);
 	return 0;
 }
 
@@ -49,7 +51,8 @@ static void match_symbol(struct expression *expr)
 {
 	char *name;
 
-	if (!is_freed(expr))
+	expr = is_freed(expr);
+	if (!expr)
 		return;
 	name = expr_to_var(expr);
 	sm_msg("warn: '%s' was already freed.", name);
@@ -64,7 +67,8 @@ static void match_dereferences(struct expression *expr)
 		return;
 	expr = strip_expr(expr->unop);
 
-	if (!is_freed(expr))
+	expr = is_freed(expr);
+	if (!expr)
 		return;
 	name = expr_to_var(expr);
 	sm_msg("error: dereferencing freed memory '%s'", name);
@@ -162,7 +166,8 @@ static void match_return(struct expression *expr)
 
 	if (!expr)
 		return;
-	if (!is_freed(expr))
+	expr = is_freed(expr);
+	if (!expr)
 		return;
 
 	name = expr_to_var(expr);
