@@ -20,7 +20,7 @@
 #include "smatch_slist.h"
 #include "smatch_extra.h"
 
-static struct range_list *_get_rl(struct expression *expr, int implied, int *recurse_cnt);
+static int _get_rl(struct expression *expr, int implied, struct range_list **rl, int *recurse_cnt);
 static struct range_list *handle_variable(struct expression *expr, int implied, int *recurse_cnt);
 static struct range_list *(*custom_handle_variable)(struct expression *expr);
 
@@ -52,6 +52,7 @@ enum {
 static struct range_list *last_stmt_rl(struct statement *stmt, int implied, int *recurse_cnt)
 {
 	struct expression *expr;
+	struct range_list *rl;
 
 	if (!stmt)
 		return NULL;
@@ -68,7 +69,9 @@ static struct range_list *last_stmt_rl(struct statement *stmt, int implied, int 
 	} else {
 		return NULL;
 	}
-	return _get_rl(expr, implied, recurse_cnt);
+	if (_get_rl(expr, implied, &rl, recurse_cnt))
+		return rl;
+	return NULL;
 }
 
 static struct range_list *handle_expression_statement_rl(struct expression *expr, int implied, int *recurse_cnt)
@@ -109,7 +112,8 @@ static struct range_list *handle_bitwise_negate(struct expression *expr, int imp
 	struct range_list *rl;
 	sval_t sval;
 
-	rl = _get_rl(expr->unop, implied, recurse_cnt);
+	if (!_get_rl(expr->unop, implied, &rl, recurse_cnt))
+		return NULL;
 	if (!rl_to_sval(rl, &sval))
 		return NULL;
 	sval = sval_preop(sval, '~');
@@ -122,7 +126,8 @@ static struct range_list *handle_minus_preop(struct expression *expr, int implie
 	struct range_list *rl;
 	sval_t sval;
 
-	rl = _get_rl(expr->unop, implied, recurse_cnt);
+	if (!_get_rl(expr->unop, implied, &rl, recurse_cnt))
+		return NULL;
 	if (!rl_to_sval(rl, &sval))
 		return NULL;
 	sval = sval_preop(sval, '-');
@@ -156,9 +161,11 @@ static struct range_list *handle_divide_rl(struct expression *expr, int implied,
 
 	type = get_type(expr);
 
-	left_rl = _get_rl(expr->left, implied, recurse_cnt);
+	if (!_get_rl(expr->left, implied, &left_rl, recurse_cnt))
+		return NULL;
 	left_rl = cast_rl(type, left_rl);
-	right_rl = _get_rl(expr->right, implied, recurse_cnt);
+	if (!_get_rl(expr->right, implied, &right_rl, recurse_cnt))
+		return NULL;
 	right_rl = cast_rl(type, right_rl);
 
 	if (!left_rl || !right_rl)
@@ -182,9 +189,11 @@ static struct range_list *handle_subtract_rl(struct expression *expr, int implie
 	type = get_type(expr);
 	comparison = get_comparison(expr->left, expr->right);
 
-	left_rl = _get_rl(expr->left, implied, recurse_cnt);
+	if (!_get_rl(expr->left, implied, &left_rl, recurse_cnt))
+		return NULL;
 	left_rl = cast_rl(type, left_rl);
-	right_rl = _get_rl(expr->right, implied, recurse_cnt);
+	if (!_get_rl(expr->right, implied, &right_rl, recurse_cnt))
+		return NULL;
 	right_rl = cast_rl(type, right_rl);
 
 	if ((!left_rl || !right_rl) &&
@@ -256,8 +265,8 @@ static struct range_list *handle_mod_rl(struct expression *expr, int implied, in
 	right = sval_cast(get_type(expr), right);
 	right.value--;
 
-	rl = _get_rl(expr->left, implied, recurse_cnt);
-	if (rl && rl_max(rl).uvalue < right.uvalue)
+	if (_get_rl(expr->left, implied, &rl, recurse_cnt) &&
+	    rl_max(rl).uvalue < right.uvalue)
 		right.uvalue = rl_max(rl).uvalue;
 
 	return alloc_rl(zero, right);
@@ -297,8 +306,7 @@ static struct range_list *handle_bitwise_AND(struct expression *expr, int implie
 		left_rl = cast_rl(type, left_rl);
 		add_range(&left_rl, sval_type_val(type, 0), sval_type_val(type, 0));
 	} else {
-		left_rl = _get_rl(expr->left, implied, recurse_cnt);
-		if (left_rl) {
+		if (_get_rl(expr->left, implied, &left_rl, recurse_cnt)) {
 			left_rl = cast_rl(type, left_rl);
 			left_rl = alloc_rl(sval_type_val(type, 0), rl_max(left_rl));
 		} else {
@@ -327,8 +335,7 @@ static struct range_list *handle_bitwise_AND(struct expression *expr, int implie
 			}
 		}
 	} else {
-		right_rl = _get_rl(expr->right, implied, recurse_cnt);
-		if (right_rl) {
+		if (_get_rl(expr->right, implied, &right_rl, recurse_cnt)) {
 			right_rl = cast_rl(type, right_rl);
 			right_rl = alloc_rl(sval_type_val(type, 0), rl_max(right_rl));
 		} else {
@@ -370,8 +377,7 @@ static struct range_list *handle_right_shift(struct expression *expr, int implie
 	if (implied == RL_EXACT || implied == RL_HARD)
 		return NULL;
 
-	left_rl = _get_rl(expr->left, implied, recurse_cnt);
-	if (left_rl) {
+	if (_get_rl(expr->left, implied, &left_rl, recurse_cnt)) {
 		max = rl_max(left_rl);
 		min = rl_min(left_rl);
 	} else {
@@ -406,8 +412,7 @@ static struct range_list *handle_left_shift(struct expression *expr, int implied
 	/* this is hopeless without the right side */
 	if (!get_implied_value_internal(expr->right, &right, recurse_cnt))
 		return NULL;
-	left_rl = _get_rl(expr->left, implied, recurse_cnt);
-	if (left_rl) {
+	if (_get_rl(expr->left, implied, &left_rl, recurse_cnt)) {
 		max = rl_max(left_rl);
 		min = rl_min(left_rl);
 		if (min.value == 0) {
@@ -502,9 +507,11 @@ static struct range_list *handle_binop_rl(struct expression *expr, int implied, 
 		return clone_rl(estate_rl(state));
 
 	type = get_type(expr);
-	left_rl = _get_rl(expr->left, implied, recurse_cnt);
+	if (!_get_rl(expr->left, implied, &left_rl, recurse_cnt))
+		return NULL;
 	left_rl = cast_rl(type, left_rl);
-	right_rl = _get_rl(expr->right, implied, recurse_cnt);
+	if (!_get_rl(expr->right, implied, &right_rl, recurse_cnt))
+		return NULL;
 	right_rl = cast_rl(type, right_rl);
 
 	if (!left_rl && !right_rl)
@@ -663,19 +670,36 @@ static struct range_list *handle_conditional_rl(struct expression *expr, int imp
 	struct range_list *true_rl, *false_rl;
 	struct symbol *type;
 	int final_pass_orig = final_pass;
+	int fail = 0;
 
-	if (known_condition_true(expr->conditional))
-		return _get_rl(expr->cond_true, implied, recurse_cnt);
-	if (known_condition_false(expr->conditional))
-		return _get_rl(expr->cond_false, implied, recurse_cnt);
+	if (known_condition_true(expr->conditional)) {
+		if (_get_rl(expr->cond_true, implied, &true_rl, recurse_cnt))
+			return true_rl;
+		else
+			return NULL;
+	}
+	if (known_condition_false(expr->conditional)) {
+		if (_get_rl(expr->cond_false, implied, &false_rl, recurse_cnt))
+			return false_rl;
+		else
+			return NULL;
+	}
 
 	if (implied == RL_EXACT)
 		return NULL;
 
-	if (implied_condition_true(expr->conditional))
-		return _get_rl(expr->cond_true, implied, recurse_cnt);
-	if (implied_condition_false(expr->conditional))
-		return _get_rl(expr->cond_false, implied, recurse_cnt);
+	if (implied_condition_true(expr->conditional)) {
+		if (_get_rl(expr->cond_true, implied, &true_rl, recurse_cnt))
+			return true_rl;
+		else
+			return NULL;
+	}
+	if (implied_condition_false(expr->conditional)) {
+		if (_get_rl(expr->cond_false, implied, &false_rl, recurse_cnt))
+			return false_rl;
+		else
+			return NULL;
+	}
 
 
 	/* this becomes a problem with deeply nested conditional statements */
@@ -687,15 +711,17 @@ static struct range_list *handle_conditional_rl(struct expression *expr, int imp
 	__push_fake_cur_stree();
 	final_pass = 0;
 	__split_whole_condition(expr->conditional);
-	true_rl = _get_rl(expr->cond_true, implied, recurse_cnt);
+	if (!_get_rl(expr->cond_true, implied, &true_rl, recurse_cnt))
+		fail = 1;
 	__push_true_states();
 	__use_false_states();
-	false_rl = _get_rl(expr->cond_false, implied, recurse_cnt);
+	if (!_get_rl(expr->cond_false, implied, &false_rl, recurse_cnt))
+		fail = 1;
 	__merge_true_states();
 	__free_fake_cur_stree();
 	final_pass = final_pass_orig;
 
-	if (!true_rl || !false_rl)
+	if (fail)
 		return NULL;
 	true_rl = cast_rl(type, true_rl);
 	false_rl = cast_rl(type, false_rl);
@@ -916,7 +942,9 @@ static struct range_list *handle_call_rl(struct expression *expr, int implied, i
 		struct expression *arg;
 
 		arg = get_argument_from_call_expr(expr->args, 0);
-		return _get_rl(arg, implied, recurse_cnt);
+		if (_get_rl(arg, implied, &rl, recurse_cnt))
+			return rl;
+		return NULL;
 	}
 
 	if (sym_name_is("strlen", expr->fn))
@@ -936,8 +964,7 @@ static struct range_list *handle_cast(struct expression *expr, int implied, int 
 	struct symbol *type;
 
 	type = get_type(expr);
-	rl = _get_rl(expr->cast_expression, implied, recurse_cnt);
-	if (rl)
+	if (_get_rl(expr->cast_expression, implied, &rl, recurse_cnt))
 		return cast_rl(type, rl);
 	if (implied == RL_ABSOLUTE || implied == RL_REAL_ABSOLUTE)
 		return alloc_whole_rl(type);
@@ -947,7 +974,7 @@ static struct range_list *handle_cast(struct expression *expr, int implied, int 
 	return NULL;
 }
 
-static struct range_list *_get_rl(struct expression *expr, int implied, int *recurse_cnt)
+static int _get_rl(struct expression *expr, int implied, struct range_list **rlp, int *recurse_cnt)
 {
 	struct range_list *rl;
 	struct symbol *type;
@@ -956,10 +983,10 @@ static struct range_list *_get_rl(struct expression *expr, int implied, int *rec
 	type = get_type(expr);
 	expr = strip_parens(expr);
 	if (!expr)
-		return NULL;
+		return 0;
 
 	if (++(*recurse_cnt) >= 200)
-		return NULL;
+		return 0;
 
 	switch(expr->type) {
 	case EXPR_CAST:
@@ -971,7 +998,7 @@ static struct range_list *_get_rl(struct expression *expr, int implied, int *rec
 
 	expr = strip_expr(expr);
 	if (!expr)
-		return NULL;
+		return 0;
 
 	switch (expr->type) {
 	case EXPR_VALUE:
@@ -982,7 +1009,9 @@ static struct range_list *_get_rl(struct expression *expr, int implied, int *rec
 		rl = handle_preop_rl(expr, implied, recurse_cnt);
 		break;
 	case EXPR_POSTOP:
-		rl = _get_rl(expr->unop, implied, recurse_cnt);
+		if (_get_rl(expr->unop, implied, rlp, recurse_cnt))
+			return 1;
+		rl = NULL;
 		break;
 	case EXPR_BINOP:
 		rl = handle_binop_rl(expr, implied, recurse_cnt);
@@ -1011,10 +1040,12 @@ static struct range_list *_get_rl(struct expression *expr, int implied, int *rec
 
 out_cast:
 	if (rl)
-		return rl;
-	if (type && (implied == RL_ABSOLUTE || implied == RL_REAL_ABSOLUTE))
-		return alloc_whole_rl(type);
-	return NULL;
+		*rlp = rl;
+	else if (type && (implied == RL_ABSOLUTE || implied == RL_REAL_ABSOLUTE))
+		*rlp = alloc_whole_rl(type);
+	else
+		return 0;
+	return 1;
 }
 
 /* returns 1 if it can get a value literal or else returns 0 */
@@ -1023,8 +1054,8 @@ int get_value(struct expression *expr, sval_t *sval)
 	struct range_list *rl;
 	int recurse_cnt = 0;
 
-	rl = _get_rl(expr, RL_EXACT, &recurse_cnt);
-	if (!rl_to_sval(rl, sval))
+	if (!_get_rl(expr, RL_EXACT, &rl, &recurse_cnt) ||
+	    !rl_to_sval(rl, sval))
 		return 0;
 	return 1;
 }
@@ -1033,8 +1064,8 @@ static int get_implied_value_internal(struct expression *expr, sval_t *sval, int
 {
 	struct range_list *rl;
 
-	rl =  _get_rl(expr, RL_IMPLIED, recurse_cnt);
-	if (!rl_to_sval(rl, sval))
+	if (!_get_rl(expr, RL_IMPLIED, &rl, recurse_cnt) ||
+	    !rl_to_sval(rl, sval))
 		return 0;
 	return 1;
 }
@@ -1044,8 +1075,8 @@ int get_implied_value(struct expression *expr, sval_t *sval)
 	struct range_list *rl;
 	int recurse_cnt = 0;
 
-	rl =  _get_rl(expr, RL_IMPLIED, &recurse_cnt);
-	if (!rl_to_sval(rl, sval))
+	if (!_get_rl(expr, RL_IMPLIED, &rl, &recurse_cnt) ||
+	    !rl_to_sval(rl, sval))
 		return 0;
 	return 1;
 }
@@ -1055,8 +1086,8 @@ int get_implied_min(struct expression *expr, sval_t *sval)
 	struct range_list *rl;
 	int recurse_cnt = 0;
 
-	rl =  _get_rl(expr, RL_IMPLIED, &recurse_cnt);
-	if (!rl)
+	if (!_get_rl(expr, RL_IMPLIED, &rl, &recurse_cnt) ||
+	    !rl)
 		return 0;
 	*sval = rl_min(rl);
 	return 1;
@@ -1067,8 +1098,8 @@ int get_implied_max(struct expression *expr, sval_t *sval)
 	struct range_list *rl;
 	int recurse_cnt = 0;
 
-	rl =  _get_rl(expr, RL_IMPLIED, &recurse_cnt);
-	if (!rl)
+	if (!_get_rl(expr, RL_IMPLIED, &rl, &recurse_cnt) ||
+	    !rl)
 		return 0;
 	*sval = rl_max(rl);
 	return 1;
@@ -1078,16 +1109,12 @@ int get_implied_rl(struct expression *expr, struct range_list **rl)
 {
 	int recurse_cnt = 0;
 
-	*rl = _get_rl(expr, RL_IMPLIED, &recurse_cnt);
-	if (*rl)
-		return 1;
-	return 0;
+	return _get_rl(expr, RL_IMPLIED, rl, &recurse_cnt);
 }
 
 static int get_absolute_rl_internal(struct expression *expr, struct range_list **rl, int *recurse_cnt)
 {
-	*rl = _get_rl(expr, RL_ABSOLUTE, recurse_cnt);
-	if (!*rl)
+	if (!_get_rl(expr, RL_ABSOLUTE, rl, recurse_cnt))
 		*rl = alloc_whole_rl(get_type(expr));
 	return 1;
 }
@@ -1096,8 +1123,7 @@ int get_absolute_rl(struct expression *expr, struct range_list **rl)
 {
 	int recurse_cnt = 0;
 
-	*rl = _get_rl(expr, RL_ABSOLUTE, &recurse_cnt);
-	if (!*rl)
+	if (!_get_rl(expr, RL_ABSOLUTE, rl, &recurse_cnt))
 		*rl = alloc_whole_rl(get_type(expr));
 	return 1;
 }
@@ -1106,8 +1132,7 @@ int get_real_absolute_rl(struct expression *expr, struct range_list **rl)
 {
 	int recurse_cnt = 0;
 
-	*rl = _get_rl(expr, RL_REAL_ABSOLUTE, &recurse_cnt);
-	if (!*rl)
+	if (!_get_rl(expr, RL_REAL_ABSOLUTE, rl, &recurse_cnt))
 		*rl = alloc_whole_rl(get_type(expr));
 	return 1;
 }
@@ -1120,7 +1145,7 @@ int custom_get_absolute_rl(struct expression *expr,
 
 	*rl = NULL;
 	custom_handle_variable = fn;
-	*rl = _get_rl(expr, RL_REAL_ABSOLUTE, &recurse_cnt);
+	_get_rl(expr, RL_REAL_ABSOLUTE, rl, &recurse_cnt);
 	custom_handle_variable = NULL;
 	return 1;
 }
@@ -1141,8 +1166,8 @@ int get_hard_max(struct expression *expr, sval_t *sval)
 	struct range_list *rl;
 	int recurse_cnt = 0;
 
-	rl =  _get_rl(expr, RL_HARD, &recurse_cnt);
-	if (!rl)
+	if (!_get_rl(expr, RL_HARD, &rl, &recurse_cnt) ||
+	    !rl)
 		return 0;
 	*sval = rl_max(rl);
 	return 1;
@@ -1154,8 +1179,8 @@ int get_fuzzy_min(struct expression *expr, sval_t *sval)
 	sval_t tmp;
 	int recurse_cnt = 0;
 
-	rl =  _get_rl(expr, RL_FUZZY, &recurse_cnt);
-	if (!rl)
+	if (!_get_rl(expr, RL_FUZZY, &rl, &recurse_cnt) ||
+	    !rl)
 		return 0;
 	tmp = rl_min(rl);
 	if (sval_is_negative(tmp) && sval_is_min(tmp))
@@ -1170,8 +1195,8 @@ int get_fuzzy_max(struct expression *expr, sval_t *sval)
 	sval_t max;
 	int recurse_cnt = 0;
 
-	rl =  _get_rl(expr, RL_FUZZY, &recurse_cnt);
-	if (!rl)
+	if (!_get_rl(expr, RL_FUZZY, &rl, &recurse_cnt) ||
+	    !rl)
 		return 0;
 	max = rl_max(rl);
 	if (max.uvalue > INT_MAX - 10000)
@@ -1189,8 +1214,8 @@ int get_absolute_min(struct expression *expr, sval_t *sval)
 	type = get_type(expr);
 	if (!type)
 		type = &llong_ctype;  // FIXME: this is wrong but places assume get type can't fail.
-	rl = _get_rl(expr, RL_ABSOLUTE, &recurse_cnt);
-	if (rl)
+	if (_get_rl(expr, RL_ABSOLUTE, &rl, &recurse_cnt) &&
+	    rl)
 		*sval = rl_min(rl);
 	else
 		*sval = sval_type_min(type);
@@ -1209,8 +1234,8 @@ int get_absolute_max(struct expression *expr, sval_t *sval)
 	type = get_type(expr);
 	if (!type)
 		type = &llong_ctype;
-	rl = _get_rl(expr, RL_ABSOLUTE, &recurse_cnt);
-	if (rl)
+	if (_get_rl(expr, RL_ABSOLUTE, &rl, &recurse_cnt) &&
+	    rl)
 		*sval = rl_max(rl);
 	else
 		*sval = sval_type_max(type);
