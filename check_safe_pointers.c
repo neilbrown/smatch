@@ -128,6 +128,33 @@ static void match_call(struct expression *call)
 	} END_FOR_EACH_PTR(arg);
 }
 
+static char *unsafe = NULL;
+static int unsafe_line;
+static void match_return(struct expression *ret_value)
+{
+	if (__inline_fn)
+		return;
+	if (!ret_value)
+		return;
+	if (unsafe)
+		return;
+	if (!is_safe_expr(ret_value)) {
+		unsafe = expr_to_str(ret_value);
+		unsafe_line = ret_value->pos.line;
+	}
+}
+
+static void match_func_end(struct symbol *sym)
+{
+	if (__inline_fn)
+		return;
+	if (unsafe && (sym->ctype.modifiers & MOD_SAFE))
+		sm_msg("function %s returns unsafe '%s' at line %d",
+		       sym->ident->name, unsafe, unsafe_line);
+	free_string(unsafe);
+	unsafe = NULL;
+}
+
 void check_safe_pointers(int id)
 {
 	my_id = id;
@@ -138,4 +165,6 @@ void check_safe_pointers(int id)
 	add_hook(&match_dereferences, DEREF_HOOK);
 	add_hook(&match_assign, ASSIGNMENT_HOOK);
 	add_hook(&match_call, FUNCTION_CALL_HOOK);
+	add_hook(&match_return, RETURN_HOOK);
+	add_hook(&match_func_end, END_FUNC_HOOK);
 }
