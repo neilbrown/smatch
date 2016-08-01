@@ -22,6 +22,8 @@
 
 static int my_id;
 
+STATE(safe);
+
 static int is_safe(struct expression *expr)
 {
 	struct symbol *type;
@@ -35,6 +37,12 @@ static int is_safe(struct expression *expr)
 
 static int is_safe_expr(struct expression *expr)
 {
+	struct smatch_state *st;
+
+	st = get_state_expr(my_id, expr);
+	if (st == &safe)
+		return 1;
+
 	if (implied_not_equal(expr, 0))
 		return 1;
 
@@ -62,6 +70,24 @@ static void match_dereferences(struct expression *expr)
 	free_string(name);
 }
 
+static void match_assign(struct expression *expr)
+{
+
+	if (expr->op != '=')
+		/* could be '+=' etc */
+		return;
+	if (is_fake_call(expr->right) || __in_fake_assign)
+		/* Fake assignments included the change in
+		 * "*a->foo" when you assign to 'a'
+		 */
+		return;
+
+	if (is_safe_expr(expr->right))
+		set_state_expr(my_id, expr->left, &safe);
+	else
+		set_state_expr(my_id, expr->left, &undefined);
+}
+
 void check_safe_pointers(int id)
 {
 	my_id = id;
@@ -70,4 +96,5 @@ void check_safe_pointers(int id)
 		return;
 
 	add_hook(&match_dereferences, DEREF_HOOK);
+	add_hook(&match_assign, ASSIGNMENT_HOOK);
 }
