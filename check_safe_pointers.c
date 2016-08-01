@@ -31,8 +31,11 @@ static void match_dereferences(struct expression *expr)
 
 	expr = expr->unop;
 
+	if (implied_not_equal(expr, 0))
+		return;
+
 	name = expr_to_str(expr);
-	sm_msg("dereference found: %s", name);
+	sm_msg("Possible NULL dereference found: %s", name);
 
 	free_string(name);
 }
