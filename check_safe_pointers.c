@@ -109,6 +109,13 @@ static int is_safe_expr(struct expression *expr)
 		 * the type */
 		if (is_safe_expr(expr->left))
 			return 1;
+	if (expr->type == EXPR_ASSIGNMENT && expr->op == '=') {
+		/* get_type returns type of LHS, I need attributes from
+		 * RHS
+		 */
+		return is_safe_expr(expr->right);
+	}
+
 
 
 	if (is_field_address(expr))
