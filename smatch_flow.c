@@ -437,7 +437,7 @@ void __split_expr(struct expression *expr)
 		set_parent_expr(expr->cond_false, expr);
 
 		if (known_condition_true(expr->conditional)) {
-			__split_expr(expr->cond_true);
+			__split_expr(expr->cond_true ?: expr->conditional);
 			break;
 		}
 		if (known_condition_false(expr->conditional)) {
@@ -446,7 +446,7 @@ void __split_expr(struct expression *expr)
 		}
 		__pass_to_client(expr, SELECT_HOOK);
 		__split_whole_condition(expr->conditional);
-		__split_expr(expr->cond_true);
+		__split_expr(expr->cond_true ?: expr->conditional);
 		__push_true_states();
 		__use_false_states();
 		__split_expr(expr->cond_false);

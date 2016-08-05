@@ -863,10 +863,10 @@ static void call_return_state_hooks_conditional(struct expression *expr)
 	__split_whole_condition(expr->conditional);
 	final_pass = final_pass_orig;
 
-	if (get_implied_rl(expr->cond_true, &rl))
+	if (get_implied_rl(expr->cond_true ?: expr->conditional, &rl))
 		rl = cast_rl(cur_func_return_type(), rl);
 	else
-		rl = cast_rl(cur_func_return_type(), alloc_whole_rl(get_type(expr->cond_true)));
+		rl = cast_rl(cur_func_return_type(), alloc_whole_rl(get_type(expr->cond_true ?: expr->conditional)));
 	return_ranges = show_rl(rl);
 	set_state(RETURN_ID, "return_ranges", NULL, alloc_estate_rl(rl));
 

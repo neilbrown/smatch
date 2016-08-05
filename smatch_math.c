@@ -667,7 +667,8 @@ static struct range_list *handle_conditional_rl(struct expression *expr, int imp
 	int final_pass_orig = final_pass;
 
 	if (known_condition_true(expr->conditional)) {
-		_get_rl(expr->cond_true, implied, &true_rl, recurse_cnt);
+		_get_rl(expr->cond_true ?: expr->conditional, implied,
+			&true_rl, recurse_cnt);
 		return true_rl;
 	}
 	if (known_condition_false(expr->conditional)) {
@@ -679,7 +680,8 @@ static struct range_list *handle_conditional_rl(struct expression *expr, int imp
 		return NULL;
 
 	if (implied_condition_true(expr->conditional)) {
-		_get_rl(expr->cond_true, implied, &true_rl, recurse_cnt);
+		_get_rl(expr->cond_true ?: expr->conditional, implied,
+			&true_rl, recurse_cnt);
 		return true_rl;
 	}
 	if (implied_condition_false(expr->conditional)) {
@@ -697,7 +699,7 @@ static struct range_list *handle_conditional_rl(struct expression *expr, int imp
 	__push_fake_cur_stree();
 	final_pass = 0;
 	__split_whole_condition(expr->conditional);
-	_get_rl(expr->cond_true, implied, &true_rl, recurse_cnt);
+	_get_rl(expr->cond_true ?: expr->conditional, implied, &true_rl, recurse_cnt);
 	__push_true_states();
 	__use_false_states();
 	_get_rl(expr->cond_false, implied, &false_rl, recurse_cnt);

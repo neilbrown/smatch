@@ -275,7 +275,7 @@ static void handle_select(struct expression *expr)
 
 	__push_cond_stacks();
 	__push_fake_cur_stree();
-	split_conditions(expr->cond_true);
+	split_conditions(expr->cond_true ?: expr->conditional);
 	__process_post_op_stack();
 	a_T_b_fake = __pop_fake_cur_stree();
 	a_T_b_T = combine_strees(a_T, a_T_b_fake, __pop_cond_true_stack());
@@ -294,13 +294,13 @@ static void handle_select(struct expression *expr)
 	   implied_condition_true() will use the right cur_stree */
 	__use_pre_cond_states();
 
-	if (implied_condition_true(expr->cond_true)) {
+	if (implied_condition_true(expr->cond_true ?: expr->conditional)) {
 		free_stree(&a_T_b_T);
 		free_stree(&a_T_b_F);
 		a_T_b_T = clone_stree(a_T);
 		overwrite_stree(a_T_b_fake, &a_T_b_T);
 	}
-	if (implied_condition_false(expr->cond_true)) {
+	if (implied_condition_false(expr->cond_true ?: expr->conditional)) {
 		free_stree(&a_T_b_T);
 		free_stree(&a_T_b_F);
 		a_T_b_F = clone_stree(a_T);
@@ -626,8 +626,8 @@ int __handle_select_assigns(struct expression *expr)
 	if (!is_false) {
 		struct expression fake_expr;
 
-		if (right->cond_true)
-			set_fake_assign(&fake_expr, expr->left, expr->op, right->cond_true);
+		if (right->cond_true ?: right->conditional)
+			set_fake_assign(&fake_expr, expr->left, expr->op, right->cond_true ?: right->conditional);
 		else
 			set_fake_assign(&fake_expr, expr->left, expr->op, right->conditional);
 		__split_expr(&fake_expr);
