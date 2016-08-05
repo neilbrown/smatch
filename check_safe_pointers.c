@@ -65,6 +65,31 @@ static int is_safe_expr(struct expression *expr)
 	if (implied_not_equal(expr, 0))
 		return 1;
 
+	expr = strip_parens(expr);
+	if (expr->type == EXPR_CONDITIONAL) {
+		sval_t sval;
+		/* get_real_type is overly simplistic on conditional expressions,
+		 * so we unpack this here
+		 */
+		if (implied_not_equal(expr->conditional, 0)) {
+			/* cond_false is never taken */
+			if (expr->cond_true == NULL)
+				return 1;
+			return is_safe_expr(expr->cond_true);
+		}
+		if (get_implied_value(expr->conditional, &sval) &&
+		    sval.value == 0)
+			return is_safe_expr(expr->cond_false);
+		if (!is_safe_expr(expr->cond_false))
+			return 0;
+		if (!expr->cond_true)
+			/* is expr->conditional is true, it will be used,
+			 * and must be safe
+			 */
+			return 1;
+		return is_safe_expr(expr->cond_true);
+	}
+
 	if (is_safe(expr))
 		return 1;
 
