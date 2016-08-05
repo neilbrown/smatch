@@ -29,7 +29,9 @@ static int is_safe(struct expression *expr)
 	struct symbol *type;
 
 	type = get_real_type(expr);
-	if (type && (type->ctype.modifiers & MOD_SAFE))
+	if (!type)
+		return 0;
+	if (is_ptr_type(type) && type->ctype.modifiers & MOD_SAFE)
 		return 1;
 
 	return 0;
@@ -57,6 +59,7 @@ static int is_field_address(struct expression *expr)
 static int is_safe_expr(struct expression *expr)
 {
 	struct smatch_state *st;
+	struct symbol *type;
 
 	st = get_state_expr(my_id, expr);
 	if (st == &safe)
@@ -90,7 +93,12 @@ static int is_safe_expr(struct expression *expr)
 		return is_safe_expr(expr->cond_true);
 	}
 
-	if (is_safe(expr))
+	type = get_real_type(expr);
+	if (type && is_ptr_type(type) && type->ctype.modifiers & MOD_SAFE)
+		return 1;
+	if (type && type->type == SYM_NODE)
+		type = type->ctype.base_type;
+	if (type && type->type == SYM_ARRAY)
 		return 1;
 
 	expr = strip_expr(expr);
