@@ -238,6 +238,18 @@ static void match_func_end(struct symbol *sym)
 	unsafe = NULL;
 }
 
+static void match_condition(struct expression *expr)
+{
+	if (!is_pointer(expr))
+		return;
+
+	if (expr->type == EXPR_ASSIGNMENT) {
+		match_condition(expr->right);
+		match_condition(expr->left);
+	}
+	set_true_false_states_expr(my_id, expr, &safe, &undefined);
+}
+
 void check_safe_pointers(int id)
 {
 	my_id = id;
@@ -250,4 +262,5 @@ void check_safe_pointers(int id)
 	add_hook(&match_call, FUNCTION_CALL_HOOK);
 	add_hook(&match_return, RETURN_HOOK);
 	add_hook(&match_func_end, END_FUNC_HOOK);
+	add_hook(&match_condition, CONDITION_HOOK);
 }
