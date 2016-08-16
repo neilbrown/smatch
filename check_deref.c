@@ -195,9 +195,9 @@ static void match_assign(struct expression *expr)
 	FOR_EACH_PTR_REVERSE(big_statement_stack, stmt) {
 		if (stmt->type == STMT_DECLARATION)
 			return;
-		break;
+		goto skip;
 	} END_FOR_EACH_PTR_REVERSE(stmt);
-
+skip:
 	set_state_expr(my_id, expr->left, &null);
 }
 
