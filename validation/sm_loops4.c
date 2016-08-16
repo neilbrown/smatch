@@ -22,7 +22,7 @@ void func(void)
 }
 /*
  * check-name: smatch loops #4
- * check-command: smatch -I.. sm_loops4.c
+ * check-command: smatch --spammy -I.. sm_loops4.c
  *
  * check-output-start
 sm_loops4.c:16 func() error: potentially dereferencing uninitialized 'p'.
