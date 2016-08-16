@@ -50,7 +50,7 @@ static struct symbol *get_binop_type(struct expression *expr)
 {
 	struct symbol *left, *right;
 
-	left = get_type(expr->left);
+	left = get_real_type(expr->left);
 	if (!left)
 		return NULL;
 
@@ -60,14 +60,14 @@ static struct symbol *get_binop_type(struct expression *expr)
 			return &int_ctype;
 		return left;
 	}
-	if (left->type == SYM_PTR || left->type == SYM_ARRAY)
+	if (is_ptr_type(left))
 		return left;
 
-	right = get_type(expr->right);
+	right = get_real_type(expr->right);
 	if (!right)
 		return NULL;
 
-	if (right->type == SYM_PTR || right->type == SYM_ARRAY)
+	if (is_ptr_type(right))
 		return right;
 
 	if (type_positive_bits(left) < 31 && type_positive_bits(right) < 31)
@@ -83,7 +83,7 @@ static struct symbol *get_type_symbol(struct expression *expr)
 	if (!expr || expr->type != EXPR_SYMBOL || !expr->symbol)
 		return NULL;
 
-	return get_real_base_type(expr->symbol);
+	return examine_symbol_type(expr->symbol);
 }
 
 static struct symbol *get_member_symbol(struct symbol_list *symbol_list, struct ident *member)
@@ -114,30 +114,37 @@ static struct symbol *get_symbol_from_deref(struct expression *expr)
 		return NULL;
 
 	member = expr->member;
-	sym = get_type(expr->deref);
+	sym = get_real_type(expr->deref);
 	if (!sym) {
 		// sm_msg("could not find struct type");
 		return NULL;
 	}
-	if (sym->type == SYM_PTR)
-		sym = get_real_base_type(sym);
-	sym = get_member_symbol(sym->symbol_list, member);
-	if (!sym)
+	while (sym && (sym->type == SYM_NODE || sym->type == SYM_PTR))
+		sym = get_base_type(sym);
+	if (!sym && sym->type  != SYM_STRUCT)
 		return NULL;
-	return get_real_base_type(sym);
+	sym = get_member_symbol(sym->symbol_list, member);
+	return sym;
 }
 
 static struct symbol *get_return_type(struct expression *expr)
 {
-	struct symbol *tmp;
+	struct symbol *tmp, *node, *target;
 
-	tmp = get_type(expr->fn);
+
+	tmp = get_real_type(expr->fn);
 	if (!tmp)
 		return NULL;
-	/* this is to handle __builtin_constant_p() */
-	if (tmp->type != SYM_FN)
+	if (tmp->type == SYM_NODE)
 		tmp = get_base_type(tmp);
-	return get_real_base_type(tmp);
+
+	target = tmp->ctype.base_type;
+	node = alloc_symbol(expr->pos, SYM_NODE);
+	node->ctype.modifiers = target->ctype.modifiers & MOD_SPECIFIER;
+	merge_type(node, tmp);
+	node->bit_size = target->bit_size;
+	node->array_size = target->array_size;
+	return node;
 }
 
 static struct symbol *get_expr_stmt_type(struct statement *stmt)
@@ -149,7 +156,7 @@ static struct symbol *get_expr_stmt_type(struct statement *stmt)
 		stmt = stmt->label_statement;
 	if (stmt->type != STMT_EXPRESSION)
 		return NULL;
-	return get_type(stmt->expression);
+	return get_real_type(stmt->expression);
 }
 
 static struct symbol *get_select_type(struct expression *expr)
@@ -157,10 +164,10 @@ static struct symbol *get_select_type(struct expression *expr)
 	struct symbol *one, *two;
 
 	if (expr->cond_true)
-		one = get_type(expr->cond_true);
+		one = get_real_type(expr->cond_true);
 	else
-		one = get_type(expr->conditional);
-	two = get_type(expr->cond_false);
+		one = get_real_type(expr->conditional);
+	two = get_real_type(expr->cond_false);
 	if (!one || !two)
 		return NULL;
 	/*
@@ -173,21 +180,42 @@ static struct symbol *get_select_type(struct expression *expr)
 	return two;
 }
 
-struct symbol *get_pointer_type(struct expression *expr)
+static struct symbol *get_real_pointer_type(struct expression *expr)
 {
-	struct symbol *sym;
+	struct symbol *sym, *node, *target;
 
-	sym = get_type(expr);
+	sym = get_real_type(expr);
 	if (!sym)
 		return NULL;
-	if (sym->type == SYM_NODE) {
-		sym = get_real_base_type(sym);
-		if (!sym)
-			return NULL;
-	}
-	if (sym->type != SYM_PTR && sym->type != SYM_ARRAY)
+	if (sym->type == SYM_NODE)
+		sym = get_base_type(sym);
+
+	/* copied from evaluate_dereference */
+	if (!sym || !is_ptr_type(sym))
 		return NULL;
-	return get_real_base_type(sym);
+	target = sym->ctype.base_type;
+	node = alloc_symbol(expr->pos, SYM_NODE);
+	node->ctype.modifiers = target->ctype.modifiers & MOD_SPECIFIER;
+	merge_type(node, sym);
+	node->bit_size = target->bit_size;
+	node->array_size = target->array_size;
+	if (node->type == SYM_NODE &&
+	    node->bit_size > 0 &&
+	    node->ctype.base_type->bit_size < 0) {
+		node->ctype.base_type->bit_size = node->bit_size;
+		node->ctype.base_type->array_size = node->array_size;
+	}
+	return node;
+}
+
+struct symbol *get_pointer_type(struct expression *expr)
+{
+	struct symbol *ret = get_real_pointer_type(expr);
+
+	while (ret &&
+	       (ret->type == SYM_NODE || ret->type == SYM_RESTRICT))
+		ret = ret->ctype.base_type;
+	return ret;
 }
 
 static struct symbol *fake_pointer_sym(struct expression *expr)
@@ -204,7 +232,7 @@ static struct symbol *fake_pointer_sym(struct expression *expr)
 	return sym;
 }
 
-struct symbol *get_type(struct expression *expr)
+struct symbol *get_real_type(struct expression *expr)
 {
 	struct symbol *ret;
 
@@ -230,7 +258,7 @@ struct symbol *get_type(struct expression *expr)
 		if (expr->op == '&')
 			ret = fake_pointer_sym(expr);
 		else if (expr->op == '*')
-			ret = get_pointer_type(expr->unop);
+			ret = get_real_pointer_type(expr->unop);
 		else
 			ret = get_type(expr->unop);
 		break;
@@ -240,7 +268,7 @@ struct symbol *get_type(struct expression *expr)
 	case EXPR_CAST:
 	case EXPR_FORCE_CAST:
 	case EXPR_IMPLIED_CAST:
-		ret = get_real_base_type(expr->cast_type);
+		ret = examine_symbol_type(expr->cast_type);
 		break;
 	case EXPR_COMPARE:
 	case EXPR_BINOP:
@@ -270,6 +298,15 @@ struct symbol *get_type(struct expression *expr)
 		ret = get_type(ret->initializer);
 
 	expr->ctype = ret;
+	return ret;
+}
+
+struct symbol *get_type(struct expression *expr)
+{
+	struct symbol *ret = get_real_type(expr);
+	while (ret &&
+	       (ret->type == SYM_NODE || ret->type == SYM_RESTRICT))
+		ret = ret->ctype.base_type;
 	return ret;
 }
 
@@ -492,7 +529,7 @@ struct symbol *cur_func_return_type(void)
 	return sym;
 }
 
-struct symbol *get_arg_type(struct expression *fn, int arg)
+struct symbol *get_real_arg_type(struct expression *fn, int arg)
 {
 	struct symbol *fn_type;
 	struct symbol *tmp;
@@ -509,7 +546,7 @@ struct symbol *get_arg_type(struct expression *fn, int arg)
 
 	i = 0;
 	FOR_EACH_PTR(fn_type->arguments, tmp) {
-		arg_type = get_real_base_type(tmp);
+		arg_type = examine_symbol_type(tmp);
 		if (i == arg) {
 			return arg_type;
 		}
@@ -517,6 +554,15 @@ struct symbol *get_arg_type(struct expression *fn, int arg)
 	} END_FOR_EACH_PTR(tmp);
 
 	return NULL;
+}
+
+struct symbol *get_arg_type(struct expression *fn, int arg)
+{
+	struct symbol *arg_type = get_real_arg_type(fn, arg);
+
+	if (arg_type)
+		return get_real_base_type(arg_type);
+	return arg_type;
 }
 
 static struct symbol *get_member_from_string(struct symbol_list *symbol_list, char *name)

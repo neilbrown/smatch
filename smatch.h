@@ -352,6 +352,8 @@ struct symbol *get_real_base_type(struct symbol *sym);
 int type_bytes(struct symbol *type);
 struct symbol *get_pointer_type(struct expression *expr);
 struct symbol *get_type(struct expression *expr);
+struct symbol *get_real_type(struct expression *expr);
+struct symbol *get_real_arg_type(struct expression *fn, int arg);
 int type_signed(struct symbol *base_type);
 int expr_unsigned(struct expression *expr);
 int expr_signed(struct expression *expr);
