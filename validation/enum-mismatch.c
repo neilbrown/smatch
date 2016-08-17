@@ -3,6 +3,7 @@
 /*
  * check-name: -Wenum-mismatch
  * check-command: sparse -Wenum-mismatch -Wno-int-to-enum $file
+ * check-known-to-fail: enum-checking code never committed
  *
  * check-error-start
 enum-common.c:57:45: warning: mixing different enum types

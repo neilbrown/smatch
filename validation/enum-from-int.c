@@ -3,6 +3,7 @@
 /*
  * check-name: -Wint-to-enum
  * check-command: sparse -Wno-enum-mismatch $file
+ * check-known-to-fail: enum-checking code never committed
  *
  * check-error-start
 enum-common.c:84:45: warning: conversion of

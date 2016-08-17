@@ -3,6 +3,7 @@
 /*
  * check-name: -Wenum-to-int
  * check-command: sparse -Wenum-to-int -Wno-enum-mismatch -Wno-int-to-enum $file
+ * check-known-to-fail: enum-checking code never committed
  *
  * check-error-start
 enum-common.c:97:13: warning: conversion of
