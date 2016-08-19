@@ -31,40 +31,61 @@ static int sm_state_counter;
 
 static struct stree_stack *all_pools;
 
+/* Will sort the list of possible states to
+ * ensure output in validation test cases
+ * is stable.
+ */
+static int state_cmp(const void *a, const void *b)
+{
+	char * const *as = a;
+	char * const *bs = b;
+	return strcmp(*as, *bs);
+}
+
 char *show_sm(struct sm_state *sm)
 {
 	static char buf[256];
 	struct sm_state *tmp;
 	int pos;
 	int i;
+	int cnt;
+	const char **states = NULL;
 
 	pos = snprintf(buf, sizeof(buf), "[%s] '%s' = '%s'",
 		       check_name(sm->owner), sm->name, show_state(sm->state));
 	if (pos > sizeof(buf))
 		goto truncate;
 
-	if (ptr_list_size((struct ptr_list *)sm->possible) == 1)
+	cnt = ptr_list_size((struct ptr_list *)sm->possible);
+	if (cnt == 1)
 		return buf;
-
+	states = malloc(sizeof(*states) * cnt);
 	pos += snprintf(buf + pos, sizeof(buf) - pos, " (");
 	if (pos > sizeof(buf))
 		goto truncate;
 	i = 0;
 	FOR_EACH_PTR(sm->possible, tmp) {
-		if (i++)
+		states[i++] = show_state(tmp->state);
+	} END_FOR_EACH_PTR(tmp);
+	cnt = i;
+	qsort(states, cnt, sizeof(*states), state_cmp);
+	for (i = 0; i < cnt; i++) {
+		if (i)
 			pos += snprintf(buf + pos, sizeof(buf) - pos, ", ");
 		if (pos > sizeof(buf))
 			goto truncate;
 		pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-			       show_state(tmp->state));
+				states[i]);
 		if (pos > sizeof(buf))
 			goto truncate;
-	} END_FOR_EACH_PTR(tmp);
+	}
 	snprintf(buf + pos, sizeof(buf) - pos, ")");
+	free(states);
 
 	return buf;
 
 truncate:
+	free(states);
 	for (i = 0; i < 3; i++)
 		buf[sizeof(buf) - 2 - i] = '.';
 	return buf;
