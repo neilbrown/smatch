@@ -116,7 +116,9 @@ static int is_safe_expr(struct expression *expr)
 		return is_safe_expr(expr->right);
 	}
 
-
+	if ((expr->type == EXPR_PREOP || expr->type == EXPR_POSTOP) &&
+	    (expr->op == SPECIAL_INCREMENT || expr->op == SPECIAL_DECREMENT))
+		return is_safe_expr(expr->unop);
 
 	if (is_field_address(expr))
 		/* The address of a member of a safe pointer is safe */
